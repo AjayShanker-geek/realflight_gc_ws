@@ -1,0 +1,52 @@
+# ----------------------------
+# Ruff configuration for ROS 2
+# ----------------------------
+
+target-version = "py310"
+line-length = 100
+
+# Enable only rules that make sense for ROS
+select = [
+  "E",   # pycodestyle
+  "F",   # pyflakes
+  "I",   # isort
+  "UP",  # pyupgrade
+]
+
+# ROS-specific false positives
+ignore = [
+  "E402",  # Imports not at top (common in ROS nodes)
+  "F401",  # Unused imports (messages, __init__.py re-exports)
+]
+
+# Never lint generated or build artifacts
+exclude = [
+  "build",
+  "install",
+  "log",
+  ".venv",
+]
+
+# ----------------------------
+# Import sorting (ROS aware)
+# ----------------------------
+[isort]
+combine-as-imports = true
+
+known-third-party = [
+  "rclpy",
+  "std_msgs",
+  "sensor_msgs",
+  "geometry_msgs",
+  "nav_msgs",
+  "tf2_ros",
+]
+
+# ----------------------------
+# File-specific relaxations
+# ----------------------------
+[per-file-ignores]
+"**/__init__.py" = ["F401"]
+"**/scripts/*.py" = ["E402"]
+"**/msg/*.py" = ["F401"]
+"**/srv/*.py" = ["F401"]

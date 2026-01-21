@@ -1,0 +1,32 @@
+CompileFlags:
+    Add:
+        - "-std=c++17"
+        - "-Wall"
+        - "-Wextra"
+        - "-Wpedantic"
+        - "-I/opt/ros/humble/include"
+
+        # PX4 / Eigen
+        - -I/usr/include/eigen3
+
+        # Standard includes
+        - -I/usr/include/c++/11
+        - -I/usr/include/x86_64-linux-gnu/c++/11
+        - -I/usr/include/c++/11/backward
+        - -I/usr/local/include
+        - -I/usr/include/x86_64-linux-gnu
+        - -I/usr/include
+    Remove:
+        - "-fno-exceptions"
+
+Index:
+    Background: Build
+
+Diagnostics:
+    UnusedIncludes: Strict
+
+Completion:
+    AllScopes: true
+
+InlayHints:
+    Enabled: Yes

@@ -1,0 +1,40 @@
+# ROS2 related
+build/
+install/
+log/
+rosbags/
+
+# Clangd LSP
+.cache/
+
+# VScode settings
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# cached data
+.DS_Store
+
+# data convert
+raw_data/
+
+# logs
+*log
+*logs/
+
+#temporary
+tmp/
+temp/
+
+# unused packages
+src/geom_multilift/
+src/l2c_pkg/
+
+# unused codes
+src/pva_control/src/pva_bounded_feedback_control_node.cpp
+src/pva_control/launch/pva_bounded_sitl_swarm.launch.py
+src/pva_control/config/pva_bounded_feedback_params.yaml

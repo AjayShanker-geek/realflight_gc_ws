@@ -1,0 +1,13 @@
+[submodule "src/px4_msgs"]
+	path = src/px4_msgs
+	url = https://github.com/PX4/px4_msgs.git
+	branch = release/1.16
+
+[submodule "src/px4_ros_com"]
+	path = src/px4_ros_com
+	url = https://github.com/PX4/px4_ros_com.git
+	branch = release/1.16
+
+[submodule "src/vrpn_mocap"]
+	path = src/vrpn_mocap
+	url = https://github.com/Temasek-Dynamics/vrpn_mocap.git
