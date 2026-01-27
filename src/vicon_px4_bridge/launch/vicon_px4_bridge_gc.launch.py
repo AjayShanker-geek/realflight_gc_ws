@@ -55,6 +55,6 @@ def generate_launch_description():
     return LaunchDescription(
         [
             config_file_arg,
-            vicon_px4_bridge_node,
+            *nodes,
         ]
     )
