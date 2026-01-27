@@ -10,7 +10,7 @@ ViconPX4Bridge::ViconPX4Bridge() : Node("vicon_px4_bridge")
     this->declare_parameter<std::string>("output_world_frame", "NED");
     this->declare_parameter<std::string>("input_body_frame", "FLU");
     this->declare_parameter<std::string>("output_body_frame", "FRD");
-    
+
     // Get parameters
     vicon_topic_name_ = this->get_parameter("vicon_topic_name").as_string();
     px4_topic_name_ = this->get_parameter("px4_topic_name").as_string();
@@ -19,16 +19,16 @@ ViconPX4Bridge::ViconPX4Bridge() : Node("vicon_px4_bridge")
     output_world_frame_ = this->get_parameter("output_world_frame").as_string();
     input_body_frame_ = this->get_parameter("input_body_frame").as_string();
     output_body_frame_ = this->get_parameter("output_body_frame").as_string();
-    
+
     RCLCPP_INFO(this->get_logger(), "=== Vicon PX4 Bridge Configuration ===");
     RCLCPP_INFO(this->get_logger(), "Vicon topic: %s", vicon_topic_name_.c_str());
     RCLCPP_INFO(this->get_logger(), "PX4 topic: %s", px4_topic_name_.c_str());
     RCLCPP_INFO(this->get_logger(), "Topic type: %s", vicon_topic_type_.c_str());
-    RCLCPP_INFO(this->get_logger(), "World frame: %s -> %s", 
+    RCLCPP_INFO(this->get_logger(), "World frame: %s -> %s",
                 input_world_frame_.c_str(), output_world_frame_.c_str());
-    RCLCPP_INFO(this->get_logger(), "Body frame: %s -> %s", 
+    RCLCPP_INFO(this->get_logger(), "Body frame: %s -> %s",
                 input_body_frame_.c_str(), output_body_frame_.c_str());
-    
+
     // Validate frame types
     std::vector<std::string> valid_frames = {"ENU", "FLU", "NED", "FRD"};
     auto validate = [&](const std::string& frame, const std::string& name) {
@@ -37,63 +37,69 @@ ViconPX4Bridge::ViconPX4Bridge() : Node("vicon_px4_bridge")
             throw std::runtime_error("Invalid frame: " + name);
         }
     };
-    
+
     validate(input_world_frame_, "input_world_frame");
     validate(output_world_frame_, "output_world_frame");
     validate(input_body_frame_, "input_body_frame");
     validate(output_body_frame_, "output_body_frame");
-    
+
     // Calculate transformation matrices and quaternions
     // World frame transformation (left multiply)
     R_world_transform_ = getTransformationMatrix(input_world_frame_, output_world_frame_);
     q_world_transform_ = Eigen::Quaterniond(R_world_transform_);
-    
+
     // Body frame transformation (right multiply)
     R_body_transform_ = getTransformationMatrix(input_body_frame_, output_body_frame_);
     q_body_transform_ = Eigen::Quaterniond(R_body_transform_);
-    
+
     RCLCPP_INFO(this->get_logger(), "World transformation matrix (%s -> %s):",
                 input_world_frame_.c_str(), output_world_frame_.c_str());
-    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]", 
+    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]",
                 R_world_transform_(0,0), R_world_transform_(0,1), R_world_transform_(0,2));
-    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]", 
+    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]",
                 R_world_transform_(1,0), R_world_transform_(1,1), R_world_transform_(1,2));
-    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]", 
+    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]",
                 R_world_transform_(2,0), R_world_transform_(2,1), R_world_transform_(2,2));
-    
+
     RCLCPP_INFO(this->get_logger(), "Body transformation matrix (%s -> %s):",
                 input_body_frame_.c_str(), output_body_frame_.c_str());
-    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]", 
+    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]",
                 R_body_transform_(0,0), R_body_transform_(0,1), R_body_transform_(0,2));
-    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]", 
+    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]",
                 R_body_transform_(1,0), R_body_transform_(1,1), R_body_transform_(1,2));
-    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]", 
+    RCLCPP_INFO(this->get_logger(), "[%.2f, %.2f, %.2f]",
                 R_body_transform_(2,0), R_body_transform_(2,1), R_body_transform_(2,2));
-    
+
     // Create publisher
     auto qos_px4 = rclcpp::SensorDataQoS();
     px4_odom_pub_ = this->create_publisher<px4_msgs::msg::VehicleOdometry>(
         px4_topic_name_, 10);
-    
+
+    // Fixed 50 Hz publish timer
+    publish_timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(20),
+        std::bind(&ViconPX4Bridge::publishTimerCallback, this)
+    );
+
     // Create subscriber based on topic type
     if (vicon_topic_type_ == "pose") {
         vicon_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
             vicon_topic_name_, qos_px4,
             std::bind(&ViconPX4Bridge::viconPoseCallback, this, std::placeholders::_1));
-        RCLCPP_INFO(this->get_logger(), "Subscribed to PoseStamped: %s", 
+        RCLCPP_INFO(this->get_logger(), "Subscribed to PoseStamped: %s",
                     vicon_topic_name_.c_str());
     } else if (vicon_topic_type_ == "transform") {
         vicon_transform_sub_ = this->create_subscription<geometry_msgs::msg::TransformStamped>(
             vicon_topic_name_, 10,
             std::bind(&ViconPX4Bridge::viconTransformCallback, this, std::placeholders::_1));
-        RCLCPP_INFO(this->get_logger(), "Subscribed to TransformStamped: %s", 
+        RCLCPP_INFO(this->get_logger(), "Subscribed to TransformStamped: %s",
                     vicon_topic_name_.c_str());
     } else {
         RCLCPP_ERROR(this->get_logger(), "Invalid topic type: %s. Must be 'pose' or 'transform'",
                      vicon_topic_type_.c_str());
         throw std::runtime_error("Invalid topic type");
     }
-    
+
     RCLCPP_INFO(this->get_logger(), "=== Bridge Ready ===");
 }
 
@@ -101,15 +107,15 @@ Eigen::Matrix3d ViconPX4Bridge::getTransformationMatrix(const std::string& from_
                                                         const std::string& to_frame)
 {
     Eigen::Matrix3d R = Eigen::Matrix3d::Identity();
-    
+
     if (from_frame == to_frame) {
         return R;
     }
-    
+
     // Define transformation matrices for common frame pairs
     // Convention: R transforms a vector from 'from_frame' to 'to_frame'
     // v_to = R * v_from
-    
+
     if (from_frame == "ENU" && to_frame == "NED") {
         // ENU: X=East, Y=North, Z=Up
         // NED: X=North, Y=East, Z=Down
@@ -180,15 +186,16 @@ Eigen::Matrix3d ViconPX4Bridge::getTransformationMatrix(const std::string& from_
                     "Unknown frame pair: %s -> %s, using identity",
                     from_frame.c_str(), to_frame.c_str());
     }
-    
+
     return R;
 }
 
 void ViconPX4Bridge::viconPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
 {
-    geometry_msgs::msg::Pose pose_converted;
-    convertFrame(msg->pose, pose_converted);
-    publishToPX4(pose_converted, msg->header.stamp);
+    convertFrame(msg->pose, latest_pose_converted_);
+    latest_stamp_ = msg->header.stamp;
+    have_pose_.store(true, std::memory_order_relaxed); // Ensure Vicon data has been received
+
 }
 
 void ViconPX4Bridge::viconTransformCallback(
@@ -196,15 +203,15 @@ void ViconPX4Bridge::viconTransformCallback(
 {
     geometry_msgs::msg::Transform transform_converted;
     convertFrame(msg->transform, transform_converted);
-    
+
     // Convert Transform to Pose
-    geometry_msgs::msg::Pose pose;
-    pose.position.x = transform_converted.translation.x;
-    pose.position.y = transform_converted.translation.y;
-    pose.position.z = transform_converted.translation.z;
-    pose.orientation = transform_converted.rotation;
-    
-    publishToPX4(pose, msg->header.stamp);
+    latest_pose_converted_.position.x = transform_converted.translation.x;
+    latest_pose_converted_.position.y = transform_converted.translation.y;
+    latest_pose_converted_.position.z = transform_converted.translation.z;
+    latest_pose_converted_.orientation = transform_converted.rotation;
+
+    latest_stamp_ = msg->header.stamp;
+    have_pose_.store(true, std::memory_order_relaxed);
 }
 
 void ViconPX4Bridge::convertFrame(const geometry_msgs::msg::Pose& pose_in,
@@ -215,11 +222,11 @@ void ViconPX4Bridge::convertFrame(const geometry_msgs::msg::Pose& pose_in,
     // p_out = R_world * p_in
     Eigen::Vector3d pos_in(pose_in.position.x, pose_in.position.y, pose_in.position.z);
     Eigen::Vector3d pos_out = R_world_transform_ * pos_in;
-    
+
     pose_out.position.x = pos_out.x();
     pose_out.position.y = pos_out.y();
     pose_out.position.z = pos_out.z();
-    
+
     // ORIENTATION TRANSFORMATION
     // Input quaternion: q_in represents rotation from input_world_frame to input_body_frame
     // Output quaternion: q_out represents rotation from output_world_frame to output_body_frame
@@ -232,16 +239,16 @@ void ViconPX4Bridge::convertFrame(const geometry_msgs::msg::Pose& pose_in,
     //         transformation         transformation
     //
     // This is equivalent to: R_out = R_world * R_in * R_body
-    
-    Eigen::Quaterniond q_in(pose_in.orientation.w, 
+
+    Eigen::Quaterniond q_in(pose_in.orientation.w,
                            pose_in.orientation.x,
-                           pose_in.orientation.y, 
+                           pose_in.orientation.y,
                            pose_in.orientation.z);
-    
+
     // Apply double transformation: world frame change AND body frame change
     Eigen::Quaterniond q_out = q_world_transform_ * q_in * q_body_transform_;
     q_out.normalize();  // Ensure unit quaternion
-    
+
     pose_out.orientation.w = q_out.w();
     pose_out.orientation.x = q_out.x();
     pose_out.orientation.y = q_out.y();
@@ -253,81 +260,109 @@ void ViconPX4Bridge::convertFrame(const geometry_msgs::msg::Transform& transform
 {
     // TRANSLATION TRANSFORMATION
     // Transform translation using world frame transformation
-    Eigen::Vector3d trans_in(transform_in.translation.x, 
-                            transform_in.translation.y, 
+    Eigen::Vector3d trans_in(transform_in.translation.x,
+                            transform_in.translation.y,
                             transform_in.translation.z);
     Eigen::Vector3d trans_out = R_world_transform_ * trans_in;
-    
+
     transform_out.translation.x = trans_out.x();
     transform_out.translation.y = trans_out.y();
     transform_out.translation.z = trans_out.z();
-    
+
     // ROTATION TRANSFORMATION
     // Apply double transformation similar to pose conversion
-    Eigen::Quaterniond q_in(transform_in.rotation.w, 
+    Eigen::Quaterniond q_in(transform_in.rotation.w,
                            transform_in.rotation.x,
-                           transform_in.rotation.y, 
+                           transform_in.rotation.y,
                            transform_in.rotation.z);
-    
+
     // Double transformation: q_out = q_world_transform * q_in * q_body_transform
     Eigen::Quaterniond q_out = q_world_transform_ * q_in * q_body_transform_;
     q_out.normalize();
-    
+
     transform_out.rotation.w = q_out.w();
     transform_out.rotation.x = q_out.x();
     transform_out.rotation.y = q_out.y();
     transform_out.rotation.z = q_out.z();
 }
 
+void ViconPX4Bridge::publishTimerCallback()
+{
+    // Ensure we have received at least one pose
+    if (!have_pose_.load(std::memory_order_relaxed)) {
+        return;
+    }
+
+    const auto now = this->get_clock()->now();
+    const double age = (now - latest_stamp_).seconds();
+
+    // Freshness guard
+    if (age > 0.05) {  // 50 ms
+        RCLCPP_WARN_THROTTLE(
+            this->get_logger(),
+            *this->get_clock(),
+            2000,
+            "Vicon data stale (%.3f s)", age
+        );
+        return;
+    }
+
+    publishToPX4(latest_pose_converted_, now);
+}
+
 void ViconPX4Bridge::publishToPX4(const geometry_msgs::msg::Pose& pose_output,
                                    const rclcpp::Time& timestamp)
 {
     px4_msgs::msg::VehicleOdometry odom_msg;
-    
-    // Set timestamp (PX4 uses microseconds): reference from mocap_px4_bridge 
-    odom_msg.timestamp = uint64_t(timestamp.seconds())*1000000 + uint64_t(timestamp.nanoseconds())/1000;
-    odom_msg.timestamp_sample = odom_msg.timestamp;
-    
+
+    // Set timestamp (PX4 uses microseconds): reference from mocap_px4_bridge
+    const uint64_t now_us = timestamp.nanoseconds() / 1000;
+
+    odom_msg.timestamp = now_us;
+    odom_msg.timestamp_sample = now_us;
+
     // Set pose frame to NED (local frame) - PX4 always expects NED
     odom_msg.pose_frame = px4_msgs::msg::VehicleOdometry::POSE_FRAME_NED;
-    
+    odom_msg.velocity_frame =
+            px4_msgs::msg::VehicleOdometry::VELOCITY_FRAME_NED;
+
     // Position in NED frame
     odom_msg.position[0] = static_cast<float>(pose_output.position.x);
     odom_msg.position[1] = static_cast<float>(pose_output.position.y);
     odom_msg.position[2] = static_cast<float>(pose_output.position.z);
-    
+
     // Orientation quaternion (w, x, y, z in PX4)
     // This represents rotation from NED to FRD (body frame)
     odom_msg.q[0] = static_cast<float>(pose_output.orientation.w);
     odom_msg.q[1] = static_cast<float>(pose_output.orientation.x);
     odom_msg.q[2] = static_cast<float>(pose_output.orientation.y);
     odom_msg.q[3] = static_cast<float>(pose_output.orientation.z);
-    
+
     // Velocity (set to NaN as we don't have velocity from pose)
     odom_msg.velocity_frame = px4_msgs::msg::VehicleOdometry::VELOCITY_FRAME_NED;
     odom_msg.velocity[0] = NAN;
     odom_msg.velocity[1] = NAN;
     odom_msg.velocity[2] = NAN;
-    
+
     // Angular velocity (set to NaN)
     odom_msg.angular_velocity[0] = NAN;
     odom_msg.angular_velocity[1] = NAN;
     odom_msg.angular_velocity[2] = NAN;
-    
+
     // Covariances (unknown)
     for (int i = 0; i < 21; i++) {
         odom_msg.position_variance[i] = NAN;
         odom_msg.orientation_variance[i] = NAN;
         odom_msg.velocity_variance[i] = NAN;
     }
-    
+
     // Publish
     px4_odom_pub_->publish(odom_msg);
-    
+
     // Log at reduced rate
     static int counter = 0;
     if (counter++ % 100 == 0) {
-        RCLCPP_INFO(this->get_logger(), 
+        RCLCPP_INFO(this->get_logger(),
                     "Published: pos=[%.3f, %.3f, %.3f] quat=[%.3f, %.3f, %.3f, %.3f]",
                     odom_msg.position[0], odom_msg.position[1], odom_msg.position[2],
                     odom_msg.q[0], odom_msg.q[1], odom_msg.q[2], odom_msg.q[3]);
@@ -337,16 +372,16 @@ void ViconPX4Bridge::publishToPX4(const geometry_msgs::msg::Pose& pose_output,
 int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
-    
+
     try {
         auto node = std::make_shared<ViconPX4Bridge>();
         rclcpp::spin(node);
     } catch (const std::exception& e) {
-        RCLCPP_ERROR(rclcpp::get_logger("vicon_px4_bridge"), 
+        RCLCPP_ERROR(rclcpp::get_logger("vicon_px4_bridge"),
                      "Exception: %s", e.what());
         return 1;
     }
-    
+
     rclcpp::shutdown();
     return 0;
 }
