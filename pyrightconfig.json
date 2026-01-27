@@ -1,4 +1,5 @@
 {
     "reportAttributeAccessIssue": "none",
-    "reportUnknownMemberType": "none"
+    "reportUnknownMemberType": "none",
+    "extraPaths": ["./src", "/opt/ros/humble/lib/python3.10/site-packages"]
 }
