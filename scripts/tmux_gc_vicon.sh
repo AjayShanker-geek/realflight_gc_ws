@@ -19,8 +19,18 @@ SESSION=ground_control_station
 # ============================================================================
 # This command will be executed at the start of each screen session to
 # properly configure the ROS2 environment
+
+# Detect ROS 2 distro
+if [ -f /opt/ros/humble/setup.bash ]; then
+    ROS_DISTRO=humble
+elif [ -f /opt/ros/foxy/setup.bash ]; then
+    ROS_DISTRO=foxy
+else
+    echo "ERROR: No supported ROS 2 distro found (foxy or humble)"
+    exit 1
+fi
 WORKSPACE_DIR="$HOME/realflight_gc_ws"
-ROS2_SETUP_CMD="source /opt/ros/humble/setup.bash && source $WORKSPACE_DIR/install/setup.bash"
+ROS2_SETUP_CMD="source /opt/ros/${ROS_DISTRO}/setup.bash && source ${WORKSPACE_DIR}/install/setup.bash"
 
 # ROS2 topics
 # TODO: Cleanup
@@ -108,7 +118,7 @@ BAG_PATH="${BAG_DIR}/gc_$(date +%Y%m%d_%H%M%S)"
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 tmux new-session -d -s $SESSION
 tmux split-window -h -t $SESSION
-tmux split-window -v -t ${SESSION}:1
+tmux split-window -v -t ${SESSION}:0
 
 # Pane 0
 # ============================================================================
