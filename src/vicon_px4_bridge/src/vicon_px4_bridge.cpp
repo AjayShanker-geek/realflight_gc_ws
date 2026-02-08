@@ -72,8 +72,13 @@ ViconPX4Bridge::ViconPX4Bridge() : Node("vicon_px4_bridge")
 
     // Create publisher
     auto qos_px4 = rclcpp::SensorDataQoS();
+
+    //Best effort, volatile for PX4 odometry
+    rclcpp::QoS qos(rclcpp::KeepLast(1));
+    qos.best_effort();
+    qos.durability_volatile();
     px4_odom_pub_ = this->create_publisher<px4_msgs::msg::VehicleOdometry>(
-        px4_topic_name_, 10);
+        px4_topic_name_, qos);
 
     // Fixed 50 Hz publish timer
     publish_timer_ = this->create_wall_timer(
